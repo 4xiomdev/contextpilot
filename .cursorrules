@@ -1,12 +1,12 @@
-# Nozomio Context Augmentation Layer - Cursor Rules
+# ContextPilot - Open Source Context Augmentation Layer
 
-## Always Use Nozomio MCP Tools First
+## Always Use ContextPilot MCP Tools First
 
-When implementing code that uses external APIs (Gemini, OpenAI, etc.), **ALWAYS** search the Nozomio documentation index BEFORE writing code.
+When implementing code that uses external APIs (Gemini, OpenAI, etc.), **ALWAYS** search the ContextPilot documentation index BEFORE writing code.
 
 ### Workflow
 
-1. **Search Nozomio First**
+1. **Search ContextPilot First**
    - Use `search_documentation` MCP tool to find relevant API documentation
    - Example: `search_documentation(query="Gemini generate_content Python", limit=5)`
 
@@ -15,7 +15,7 @@ When implementing code that uses external APIs (Gemini, OpenAI, etc.), **ALWAYS*
    - Look for code examples, API signatures, parameters
 
 3. **Write Code Based on Retrieved Docs**
-   - Implement using the exact API patterns found in Nozomio
+   - Implement using the exact API patterns found in ContextPilot
    - Include citations from the URLs in comments
 
 4. **If Documentation is Missing**
@@ -34,7 +34,7 @@ Agent:
 4. Add comment: # Source: https://ai.google.dev/gemini-api/docs/text-generation
 ```
 
-### When to Use Nozomio
+### When to Use ContextPilot
 
 **ALWAYS use for:**
 - Gemini API (any feature)
@@ -55,7 +55,7 @@ Agent:
 
 ### Current Index
 
-Your Nozomio instance has indexed:
+Your ContextPilot instance has indexed:
 - **Gemini API**: Complete documentation (40+ pages)
 - **OpenAI API**: Most guides and references (30+ pages)
 - **Total**: 2,598+ indexed chunks ready for search
@@ -64,7 +64,5 @@ Your Nozomio instance has indexed:
 
 - **Accurate**: Real documentation, not hallucinated
 - **Up-to-date**: Crawl new pages anytime
-- **Fast**: Local Pinecone search in <100ms
+- **Fast**: Pinecone search in <100ms
 - **Cited**: Every result includes source URLs
-
-
