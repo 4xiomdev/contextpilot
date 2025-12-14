@@ -1,0 +1,13 @@
+{
+  "projects": {},
+  "targets": {
+    "contextpilot-app": {
+      "hosting": {
+        "contextpilot": [
+          "contextpilot-app"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
