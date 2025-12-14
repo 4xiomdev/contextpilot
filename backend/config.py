@@ -52,6 +52,12 @@ class FirestoreConfig:
 
 
 @dataclass(frozen=True)
+class DatabaseConfig:
+    """SQLite database configuration (for local fallback)."""
+    path: Path
+
+
+@dataclass(frozen=True)
 class ServerConfig:
     """Server configuration."""
     host: str = "0.0.0.0"
@@ -97,6 +103,11 @@ class Config:
         self.firestore = FirestoreConfig(
             project_id=os.getenv("FIREBASE_PROJECT_ID", ""),
             database_id=os.getenv("FIRESTORE_DATABASE_ID", "(default)"),
+        )
+        
+        # SQLite fallback for local development
+        self.database = DatabaseConfig(
+            path=self.data_dir / "contextpilot.db",
         )
         
         self.server = ServerConfig(
