@@ -14,7 +14,7 @@ from google import genai
 from pinecone import Pinecone, ServerlessSpec
 
 from .config import get_config
-from .db import get_db, IndexedDoc
+from .firestore_db import get_firestore_db as get_db
 
 logger = logging.getLogger("contextpilot.embed")
 

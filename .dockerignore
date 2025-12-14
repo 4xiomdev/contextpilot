@@ -1,0 +1,53 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.py[cod]
+*.so
+.Python
+*.egg-info
+.venv
+venv
+env
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local data
+data/
+*.db
+*.sqlite
+
+# Frontend (built separately)
+frontend/
+node_modules/
+
+# Docs
+*.md
+!README.md
+
+# Tests
+tests/
+*.test.py
+
+# Scripts
+scripts/
+
+# Normalized docs output
+normalized_docs/
+backup_normalized/
+
+# Local config
+.env
+.env.local
+*.log
+

@@ -14,7 +14,7 @@ from pydantic import BaseModel
 from fastmcp import FastMCP
 
 from .config import get_config
-from .db import get_db, CrawlStatus
+from .firestore_db import get_firestore_db as get_db, CrawlStatus
 from .embed_manager import get_embed_manager
 from .crawl_manager import get_crawl_manager
 from .normalizer import get_normalizer

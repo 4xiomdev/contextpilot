@@ -1,0 +1,36 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow read access to stats for public dashboard
+    match /stats/{document=**} {
+      allow read: if true;
+    }
+    
+    // Crawl jobs - require authentication
+    match /crawl_jobs/{jobId} {
+      allow read: if true;
+      allow write: if request.auth != null || 
+                     request.headers['x-api-key'] != null;
+    }
+    
+    // Indexed docs - require authentication for write
+    match /indexed_docs/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null ||
+                     request.headers['x-api-key'] != null;
+    }
+    
+    // Normalized docs - require authentication for write
+    match /normalized_docs/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null ||
+                     request.headers['x-api-key'] != null;
+    }
+    
+    // Default: deny all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+

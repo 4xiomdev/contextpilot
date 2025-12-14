@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import trafilatura
 
 from .config import get_config
-from .db import get_db, CrawlStatus, CrawlMethod, CrawlJob
+from .firestore_db import get_firestore_db as get_db, CrawlStatus, CrawlMethod
 from .embed_manager import get_embed_manager, Chunk
 
 logger = logging.getLogger("contextpilot.crawl")

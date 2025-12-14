@@ -14,7 +14,7 @@ import uuid
 from google import genai
 
 from .config import get_config
-from .db import get_db
+from .firestore_db import get_firestore_db as get_db
 from .embed_manager import get_embed_manager
 
 logger = logging.getLogger("contextpilot.normalizer")

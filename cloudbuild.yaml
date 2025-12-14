@@ -1,0 +1,61 @@
+# ContextPilot Cloud Build Configuration
+# Builds and deploys the API to Cloud Run
+
+steps:
+  # Build the Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/contextpilot-api:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/contextpilot-api:latest'
+      - '.'
+
+  # Push the image to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/contextpilot-api:$COMMIT_SHA'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/contextpilot-api:latest'
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'gcloud'
+    args:
+      - 'run'
+      - 'deploy'
+      - 'contextpilot-api'
+      - '--image'
+      - 'gcr.io/$PROJECT_ID/contextpilot-api:$COMMIT_SHA'
+      - '--region'
+      - 'us-central1'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--memory'
+      - '1Gi'
+      - '--cpu'
+      - '1'
+      - '--timeout'
+      - '300s'
+      - '--max-instances'
+      - '10'
+      - '--set-env-vars'
+      - 'FIREBASE_PROJECT_ID=$PROJECT_ID'
+      - '--set-secrets'
+      - 'GOOGLE_API_KEY=google-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest,FIRECRAWL_API_KEY=firecrawl-api-key:latest,CONTEXTPILOT_API_KEY=contextpilot-api-key:latest'
+
+# Store images in Container Registry
+images:
+  - 'gcr.io/$PROJECT_ID/contextpilot-api:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/contextpilot-api:latest'
+
+# Build options
+options:
+  logging: CLOUD_LOGGING_ONLY
+
