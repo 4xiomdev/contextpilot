@@ -1,0 +1,70 @@
+# Nozomio Context Augmentation Layer - Cursor Rules
+
+## Always Use Nozomio MCP Tools First
+
+When implementing code that uses external APIs (Gemini, OpenAI, etc.), **ALWAYS** search the Nozomio documentation index BEFORE writing code.
+
+### Workflow
+
+1. **Search Nozomio First**
+   - Use `search_documentation` MCP tool to find relevant API documentation
+   - Example: `search_documentation(query="Gemini generate_content Python", limit=5)`
+
+2. **Review Retrieved Context**
+   - Read the search results carefully
+   - Look for code examples, API signatures, parameters
+
+3. **Write Code Based on Retrieved Docs**
+   - Implement using the exact API patterns found in Nozomio
+   - Include citations from the URLs in comments
+
+4. **If Documentation is Missing**
+   - Use `crawl_url` to index the relevant documentation page
+   - Then search again
+
+### Example Workflow
+
+```
+User: "Write code to call Gemini 2.5 Flash"
+
+Agent:
+1. search_documentation("Gemini 2.5 Flash generate_content Python SDK")
+2. Review results showing: client.models.generate_content(model="gemini-2.5-flash", ...)
+3. Write code using that exact pattern
+4. Add comment: # Source: https://ai.google.dev/gemini-api/docs/text-generation
+```
+
+### When to Use Nozomio
+
+**ALWAYS use for:**
+- Gemini API (any feature)
+- OpenAI API (any feature)
+- Any API documentation that has been indexed
+- Before implementing unfamiliar APIs
+
+**Skip for:**
+- Standard library functions (Python built-ins)
+- Well-known packages (requests, pandas) unless specific advanced features
+
+### Available Tools
+
+- `search_documentation(query, limit=10, url_filter="")` - Search indexed docs
+- `crawl_url(url)` - Index a new documentation page
+- `build_normalized_doc(url_prefix, title)` - Create synthesized docs
+- `health_status()` - Check what's indexed
+
+### Current Index
+
+Your Nozomio instance has indexed:
+- **Gemini API**: Complete documentation (40+ pages)
+- **OpenAI API**: Most guides and references (30+ pages)
+- **Total**: 2,598+ indexed chunks ready for search
+
+### Benefits
+
+- **Accurate**: Real documentation, not hallucinated
+- **Up-to-date**: Crawl new pages anytime
+- **Fast**: Local Pinecone search in <100ms
+- **Cited**: Every result includes source URLs
+
+
