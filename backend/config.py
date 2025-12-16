@@ -68,8 +68,16 @@ class ServerConfig:
 @dataclass(frozen=True)
 class AuthConfig:
     """API authentication configuration."""
+    mode: str
     api_key: str
     enabled: bool = True
+
+
+@dataclass(frozen=True)
+class MultiTenantConfig:
+    """Multi-tenant configuration for hosted deployments."""
+    enabled: bool = False
+    tenants_collection: str = "tenants"
 
 
 class Config:
@@ -117,9 +125,21 @@ class Config:
         )
         
         self.auth = AuthConfig(
+            mode=self._default_auth_mode(),
             api_key=os.getenv("CONTEXTPILOT_API_KEY", ""),
             enabled=os.getenv("AUTH_ENABLED", "true").lower() == "true",
         )
+
+        self.multi_tenant = MultiTenantConfig(
+            enabled=os.getenv("MULTI_TENANT_ENABLED", "").lower() == "true",
+        )
+
+        # Fail fast in hosted mode if auth is required but not configured.
+        if self.is_cloud_run and self.auth.enabled and self.auth.mode == "api_key" and not self.auth.api_key:
+            raise EnvironmentError(
+                "AUTH is enabled in Cloud Run but CONTEXTPILOT_API_KEY is not set. "
+                "Set CONTEXTPILOT_API_KEY (or switch AUTH_MODE=firebase/none)."
+            )
     
     def _validate_required_env_vars(self) -> None:
         """Validate that required environment variables are set."""
@@ -161,7 +181,35 @@ class Config:
     @property
     def has_auth(self) -> bool:
         """Check if API authentication is configured."""
-        return bool(self.auth.api_key) and self.auth.enabled
+        if not self.auth.enabled:
+            return False
+        if self.auth.mode == "none":
+            return False
+        if self.auth.mode == "api_key":
+            return bool(self.auth.api_key)
+        if self.auth.mode == "firebase":
+            # Firebase auth uses bearer tokens; relies on default credentials in Cloud Run.
+            return True
+        if self.auth.mode == "api_key_or_firebase":
+            return bool(self.auth.api_key) or True
+        return False
+
+    @property
+    def is_cloud_run(self) -> bool:
+        """Detect Cloud Run runtime."""
+        return bool(os.getenv("K_SERVICE"))
+
+    def _default_auth_mode(self) -> str:
+        """
+        Determine auth mode.
+
+        - Local dev: default to none (no auth) unless AUTH_MODE provided.
+        - Cloud Run: default to api_key unless AUTH_MODE provided.
+        """
+        explicit = os.getenv("AUTH_MODE", "").strip().lower()
+        if explicit:
+            return explicit
+        return "api_key" if self.is_cloud_run else "none"
 
 
 # Singleton instance

@@ -16,6 +16,7 @@ from google import genai
 from .config import get_config
 from .firestore_db import get_firestore_db as get_db
 from .embed_manager import get_embed_manager
+from .tenant_context import get_tenant_id
 
 logger = logging.getLogger("contextpilot.normalizer")
 
@@ -40,10 +41,11 @@ class Normalizer:
     markdown document that's optimized for embedding and retrieval.
     """
     
-    def __init__(self):
+    def __init__(self, tenant_id: Optional[str] = None):
         self.config = get_config()
-        self.db = get_db()
-        self.embed_manager = get_embed_manager()
+        self.tenant_id = tenant_id or get_tenant_id()
+        self.db = get_db(self.tenant_id)
+        self.embed_manager = get_embed_manager(self.tenant_id)
         
         # Initialize Gemini client
         self._genai_client = genai.Client(api_key=self.config.google.api_key)
@@ -150,7 +152,7 @@ class Normalizer:
                             "created_at": time.time(),
                         },
                     }],
-                    namespace=self.config.pinecone.normalized_namespace,
+                    namespace=self.embed_manager._ns(self.config.pinecone.normalized_namespace),
                 )
             
             # Track in SQLite
@@ -347,15 +349,14 @@ Generate a unified, well-structured documentation document.
         ]
 
 
-# Singleton instance
-_normalizer: Optional[Normalizer] = None
+# Singleton instances (keyed by tenant id).
+_normalizers: dict[str, Normalizer] = {}
 
 
-def get_normalizer() -> Normalizer:
-    """Get the singleton normalizer instance."""
-    global _normalizer
-    if _normalizer is None:
-        _normalizer = Normalizer()
-    return _normalizer
-
+def get_normalizer(tenant_id: Optional[str] = None) -> Normalizer:
+    """Get the normalizer instance for the current tenant."""
+    key = tenant_id or get_tenant_id()
+    if key not in _normalizers:
+        _normalizers[key] = Normalizer(tenant_id=key)
+    return _normalizers[key]
 

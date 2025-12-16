@@ -15,6 +15,7 @@ from pinecone import Pinecone, ServerlessSpec
 
 from .config import get_config
 from .firestore_db import get_firestore_db as get_db
+from .tenant_context import get_tenant_id
 
 logger = logging.getLogger("contextpilot.embed")
 
@@ -57,9 +58,10 @@ class EmbedManager:
     - Handle deduplication via content hashing
     """
     
-    def __init__(self):
+    def __init__(self, tenant_id: Optional[str] = None):
         self.config = get_config()
-        self.db = get_db()
+        self.tenant_id = tenant_id or get_tenant_id()
+        self.db = get_db(self.tenant_id)
         
         # Initialize Google GenAI client
         self._genai_client = genai.Client(api_key=self.config.google.api_key)
@@ -70,6 +72,12 @@ class EmbedManager:
         
         if self.config.has_pinecone:
             self._init_pinecone()
+
+    def _ns(self, base: str) -> str:
+        """Resolve the Pinecone namespace for the current tenant."""
+        if self.config.multi_tenant.enabled:
+            return f"{self.tenant_id}__{base}"
+        return base
     
     def _init_pinecone(self) -> None:
         """Initialize Pinecone client and ensure index exists."""
@@ -199,7 +207,7 @@ class EmbedManager:
                     "values": embedding,
                     "metadata": metadata,
                 }],
-                namespace=namespace,
+                namespace=self._ns(namespace),
             )
             
             # Track in SQLite
@@ -238,6 +246,7 @@ class EmbedManager:
         indexed_count = 0
         
         # Process in batches for efficiency
+        ns = self._ns(namespace)
         for i in range(0, len(chunks), batch_size):
             batch = chunks[i:i + batch_size]
             vectors = []
@@ -282,7 +291,7 @@ class EmbedManager:
             
             if vectors:
                 try:
-                    self._index.upsert(vectors=vectors, namespace=namespace)
+                    self._index.upsert(vectors=vectors, namespace=ns)
                     indexed_count += len(vectors)
                     logger.info(f"Indexed batch of {len(vectors)} chunks")
                 except Exception as e:
@@ -328,13 +337,14 @@ class EmbedManager:
             }
         
         try:
+            ns = self._ns(namespace)
             # Query Pinecone
             results = self._index.query(
                 vector=query_embedding,
                 top_k=limit * 2,  # Over-fetch for deduplication
                 filter=filter_dict,
                 include_metadata=True,
-                namespace=namespace,
+                namespace=ns,
             )
             
             # Convert to SearchResult objects
@@ -357,7 +367,7 @@ class EmbedManager:
                     page_url=metadata.get("page_url", ""),
                     title=metadata.get("title", ""),
                     content=metadata.get("content", ""),
-                    namespace=namespace,
+                    namespace=ns,
                 ))
                 
                 if len(search_results) >= limit:
@@ -400,7 +410,7 @@ class EmbedManager:
                 # Delete from Pinecone in batches
                 for i in range(0, len(pinecone_ids), 100):
                     batch = pinecone_ids[i:i + 100]
-                    self._index.delete(ids=batch, namespace="docs")
+                    self._index.delete(ids=batch, namespace=self._ns(self.config.pinecone.docs_namespace))
                 logger.info(f"Deleted {len(pinecone_ids)} vectors for {source_url}")
             except Exception as e:
                 logger.error(f"Failed to delete vectors: {e}")
@@ -432,14 +442,13 @@ class EmbedManager:
             return {"error": str(e)}
 
 
-# Singleton instance
-_embed_manager: Optional[EmbedManager] = None
+# Singleton instances (keyed by tenant id).
+_embed_managers: Dict[str, EmbedManager] = {}
 
 
-def get_embed_manager() -> EmbedManager:
-    """Get the singleton embed manager instance."""
-    global _embed_manager
-    if _embed_manager is None:
-        _embed_manager = EmbedManager()
-    return _embed_manager
-
+def get_embed_manager(tenant_id: Optional[str] = None) -> EmbedManager:
+    """Get the embed manager instance for the current tenant."""
+    key = tenant_id or get_tenant_id()
+    if key not in _embed_managers:
+        _embed_managers[key] = EmbedManager(tenant_id=key)
+    return _embed_managers[key]

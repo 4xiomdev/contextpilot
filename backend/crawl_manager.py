@@ -14,6 +14,7 @@ import trafilatura
 from .config import get_config
 from .firestore_db import get_firestore_db as get_db, CrawlStatus, CrawlMethod
 from .embed_manager import get_embed_manager, Chunk
+from .tenant_context import get_tenant_id
 
 logger = logging.getLogger("contextpilot.crawl")
 
@@ -61,10 +62,11 @@ class CrawlManager:
     Fallback: trafilatura (local, no API credits needed)
     """
     
-    def __init__(self):
+    def __init__(self, tenant_id: Optional[str] = None):
         self.config = get_config()
-        self.db = get_db()
-        self.embed_manager = get_embed_manager()
+        self.tenant_id = tenant_id or get_tenant_id()
+        self.db = get_db(self.tenant_id)
+        self.embed_manager = get_embed_manager(self.tenant_id)
         
         # Initialize Firecrawl if available
         self._firecrawl_client = None
@@ -464,14 +466,13 @@ class CrawlManager:
         return False
 
 
-# Singleton instance
-_crawl_manager: Optional[CrawlManager] = None
+# Singleton instances (keyed by tenant id).
+_crawl_managers: dict[str, CrawlManager] = {}
 
 
-def get_crawl_manager() -> CrawlManager:
-    """Get the singleton crawl manager instance."""
-    global _crawl_manager
-    if _crawl_manager is None:
-        _crawl_manager = CrawlManager()
-    return _crawl_manager
-
+def get_crawl_manager(tenant_id: Optional[str] = None) -> CrawlManager:
+    """Get the crawl manager instance for the current tenant."""
+    key = tenant_id or get_tenant_id()
+    if key not in _crawl_managers:
+        _crawl_managers[key] = CrawlManager(tenant_id=key)
+    return _crawl_managers[key]

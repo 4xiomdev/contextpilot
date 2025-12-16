@@ -83,7 +83,7 @@ gcloud run deploy contextpilot-api \
   --memory 1Gi \
   --cpu 1 \
   --timeout 300s \
-  --set-env-vars "FIREBASE_PROJECT_ID=$PROJECT_ID" \
+  --set-env-vars "FIREBASE_PROJECT_ID=$PROJECT_ID,AUTH_MODE=api_key_or_firebase,MULTI_TENANT_ENABLED=true" \
   --set-secrets "GOOGLE_API_KEY=google-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest,FIRECRAWL_API_KEY=firecrawl-api-key:latest,CONTEXTPILOT_API_KEY=contextpilot-api-key:latest"
 ```
 
@@ -207,5 +207,4 @@ gcloud run logs read contextpilot-api
 # Firebase Hosting logs
 firebase functions:log
 ```
-
 

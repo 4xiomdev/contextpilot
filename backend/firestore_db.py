@@ -21,6 +21,7 @@ except ImportError:
     FieldFilter = None
 
 from .config import get_config
+from .tenant_context import get_tenant_id
 import logging
 
 logger = logging.getLogger("contextpilot.firestore")
@@ -92,12 +93,25 @@ class FirestoreDatabase:
     - normalized_docs: Normalized document metadata
     """
     
-    def __init__(self):
+    def __init__(self, tenant_id: Optional[str] = None):
         self.config = get_config()
+        self.tenant_id = tenant_id or get_tenant_id()
         self._client = None
         
         if HAS_FIRESTORE and self.config.has_firestore:
             self._init_firestore()
+
+    def _col(self, name: str):
+        """Get a collection reference (tenant-scoped when multi-tenant is enabled)."""
+        if not self._client:
+            raise RuntimeError("Firestore client not initialized")
+        if self.config.multi_tenant.enabled:
+            return (
+                self._client.collection(self.config.multi_tenant.tenants_collection)
+                .document(self.tenant_id)
+                .collection(name)
+            )
+        return self._client.collection(name)
     
     def _init_firestore(self) -> None:
         """Initialize Firestore client."""
@@ -137,7 +151,7 @@ class FirestoreDatabase:
             "created_at": now,
         }
         
-        doc_ref = self._client.collection("crawl_jobs").add(data)
+        doc_ref = self._col("crawl_jobs").add(data)
         doc_id = doc_ref[1].id
         
         return CrawlJob(
@@ -174,11 +188,11 @@ class FirestoreDatabase:
             updates["error_message"] = error_message
         
         if updates:
-            self._client.collection("crawl_jobs").document(job_id).update(updates)
+            self._col("crawl_jobs").document(job_id).update(updates)
     
     def get_crawl_job(self, job_id: str) -> Optional[CrawlJob]:
         """Get a crawl job by ID."""
-        doc = self._client.collection("crawl_jobs").document(job_id).get()
+        doc = self._col("crawl_jobs").document(job_id).get()
         
         if doc.exists:
             data = doc.to_dict()
@@ -202,7 +216,7 @@ class FirestoreDatabase:
         offset: int = 0,
     ) -> List[CrawlJob]:
         """List crawl jobs with optional filtering."""
-        query = self._client.collection("crawl_jobs")
+        query = self._col("crawl_jobs")
         
         if status:
             query = query.where(filter=FieldFilter("status", "==", status.value))
@@ -258,12 +272,12 @@ class FirestoreDatabase:
         
         if existing:
             # Update existing
-            self._client.collection("indexed_docs").document(existing.id).update(data)
+            self._col("indexed_docs").document(existing.id).update(data)
             doc_id = existing.id
         else:
             # Insert new
             data["created_at"] = now
-            doc_ref = self._client.collection("indexed_docs").add(data)
+            doc_ref = self._col("indexed_docs").add(data)
             doc_id = doc_ref[1].id
         
         return IndexedDoc(
@@ -281,7 +295,7 @@ class FirestoreDatabase:
     
     def get_indexed_doc_by_hash(self, content_hash: str) -> Optional[IndexedDoc]:
         """Check if a document with this hash already exists."""
-        docs = self._client.collection("indexed_docs").where(
+        docs = self._col("indexed_docs").where(
             filter=FieldFilter("content_hash", "==", content_hash)
         ).limit(1).stream()
         
@@ -304,7 +318,7 @@ class FirestoreDatabase:
     
     def count_indexed_docs(self, source_url: Optional[str] = None) -> int:
         """Count indexed documents."""
-        query = self._client.collection("indexed_docs")
+        query = self._col("indexed_docs")
         
         if source_url:
             query = query.where(filter=FieldFilter("source_url", "==", source_url))
@@ -317,7 +331,7 @@ class FirestoreDatabase:
         # Group by source_url and aggregate
         sources_map = {}
         
-        for doc in self._client.collection("indexed_docs").stream():
+        for doc in self._col("indexed_docs").stream():
             data = doc.to_dict()
             source = data.get("source_url", "")
             
@@ -345,7 +359,7 @@ class FirestoreDatabase:
         """Delete all indexed docs for a source. Returns Pinecone IDs to delete."""
         pinecone_ids = []
         
-        docs = self._client.collection("indexed_docs").where(
+        docs = self._col("indexed_docs").where(
             filter=FieldFilter("source_url", "==", source_url)
         ).stream()
         
@@ -397,10 +411,10 @@ class FirestoreDatabase:
         }
         
         if existing:
-            self._client.collection("normalized_docs").document(existing.id).update(data)
+            self._col("normalized_docs").document(existing.id).update(data)
             doc_id = existing.id
         else:
-            doc_ref = self._client.collection("normalized_docs").add(data)
+            doc_ref = self._col("normalized_docs").add(data)
             doc_id = doc_ref[1].id
         
         return NormalizedDoc(
@@ -418,7 +432,7 @@ class FirestoreDatabase:
         """List all normalized documents."""
         docs = []
         
-        for doc in self._client.collection("normalized_docs").order_by(
+        for doc in self._col("normalized_docs").order_by(
             "created_at", direction=firestore.Query.DESCENDING
         ).stream():
             data = doc.to_dict()
@@ -437,7 +451,7 @@ class FirestoreDatabase:
     
     def get_normalized_doc_by_prefix(self, url_prefix: str) -> Optional[NormalizedDoc]:
         """Get a normalized doc by URL prefix."""
-        docs = self._client.collection("normalized_docs").where(
+        docs = self._col("normalized_docs").where(
             filter=FieldFilter("url_prefix", "==", url_prefix)
         ).limit(1).stream()
         
@@ -461,7 +475,7 @@ class FirestoreDatabase:
     def get_stats(self) -> Dict[str, Any]:
         """Get overall database statistics."""
         # Crawl jobs stats
-        crawl_jobs = list(self._client.collection("crawl_jobs").stream())
+        crawl_jobs = list(self._col("crawl_jobs").stream())
         crawl_stats = {
             "total": len(crawl_jobs),
             "completed": sum(1 for j in crawl_jobs if j.to_dict().get("status") == "completed"),
@@ -470,7 +484,7 @@ class FirestoreDatabase:
         }
         
         # Indexed docs stats
-        indexed_docs = list(self._client.collection("indexed_docs").stream())
+        indexed_docs = list(self._col("indexed_docs").stream())
         sources = set(d.to_dict().get("source_url", "") for d in indexed_docs)
         indexed_stats = {
             "total": len(indexed_docs),
@@ -478,7 +492,7 @@ class FirestoreDatabase:
         }
         
         # Normalized docs stats
-        normalized_docs = list(self._client.collection("normalized_docs").stream())
+        normalized_docs = list(self._col("normalized_docs").stream())
         normalized_stats = {
             "total": len(normalized_docs),
         }
@@ -498,12 +512,12 @@ class Database:
     falls back to SQLite for local development.
     """
     
-    def __init__(self):
+    def __init__(self, tenant_id: Optional[str] = None):
         config = get_config()
         self._use_firestore = HAS_FIRESTORE and config.has_firestore
         
         if self._use_firestore:
-            self._impl = FirestoreDatabase()
+            self._impl = FirestoreDatabase(tenant_id=tenant_id)
             logger.info("Using Firestore database")
         else:
             # Fall back to SQLite
@@ -516,15 +530,20 @@ class Database:
         return getattr(self._impl, name)
 
 
-# Singleton instance
-_firestore_db: Optional[Database] = None
+# Singleton instances (keyed by tenant id for multi-tenant Firestore).
+_firestore_dbs: Dict[str, Database] = {}
 
 
-def get_firestore_db() -> Database:
-    """Get the singleton database instance (Firestore or SQLite fallback)."""
-    global _firestore_db
-    if _firestore_db is None:
-        _firestore_db = Database()
-    return _firestore_db
+def get_firestore_db(tenant_id: Optional[str] = None) -> Database:
+    """Get the database instance (Firestore or SQLite fallback)."""
+    # SQLite fallback is single-tenant; reuse one instance.
+    config = get_config()
+    if not (HAS_FIRESTORE and config.has_firestore):
+        if "sqlite" not in _firestore_dbs:
+            _firestore_dbs["sqlite"] = Database()
+        return _firestore_dbs["sqlite"]
 
-
+    key = tenant_id or get_tenant_id()
+    if key not in _firestore_dbs:
+        _firestore_dbs[key] = Database(tenant_id=key)
+    return _firestore_dbs[key]

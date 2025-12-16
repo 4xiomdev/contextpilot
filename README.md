@@ -181,6 +181,24 @@ firebase deploy --only hosting
 
 See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed instructions.
 
+## Hosted Mode (Multi-tenant + API Keys)
+
+ContextPilot supports a hosted SaaS-style deployment where users authenticate with Firebase and generate per-user API keys for MCP clients:
+
+- Enable multi-tenancy: set `MULTI_TENANT_ENABLED=true`
+- Enable auth: set `AUTH_MODE=api_key_or_firebase` (or `firebase`)
+- Configure Firestore: set `FIREBASE_PROJECT_ID=<your-project-id>`
+- Optional admin key: set `CONTEXTPILOT_API_KEY=<admin-key>` (for internal use)
+
+Once authenticated (Firebase ID token), users can create API keys:
+- `POST /api/api-keys` (returns plaintext key once)
+- `GET /api/api-keys`
+- `DELETE /api/api-keys/{digest}`
+
+MCP clients can then use the hosted API via `mcp_remote_client.py` with:
+- `CONTEXTPILOT_API_URL=https://<your-cloud-run-url>`
+- `CONTEXTPILOT_API_KEY=<user-api-key>`
+
 ## Cursor Integration
 
 Configure Cursor to use ContextPilot MCP tools:

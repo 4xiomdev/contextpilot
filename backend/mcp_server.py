@@ -18,6 +18,19 @@ from .firestore_db import get_firestore_db as get_db, CrawlStatus
 from .embed_manager import get_embed_manager
 from .crawl_manager import get_crawl_manager
 from .normalizer import get_normalizer
+from .tenant_context import set_tenant_id, reset_tenant_id
+from .api_keys import ApiKeyStore
+from .billing import is_tenant_active
+
+# Optional Firebase auth (for hosted mode)
+try:
+    import firebase_admin
+    from firebase_admin import auth as firebase_auth
+    HAS_FIREBASE_ADMIN = True
+except Exception:
+    firebase_admin = None
+    firebase_auth = None
+    HAS_FIREBASE_ADMIN = False
 
 # Configure logging
 logging.basicConfig(
@@ -226,25 +239,138 @@ async def verify_api_key(
     x_api_key: Optional[str] = Header(None, alias="X-API-Key"),
     authorization: Optional[str] = Header(None),
 ):
-    """Verify API key for protected endpoints."""
+    """Verify auth for protected endpoints. Returns tenant_id."""
     config = get_config()
     
     # Skip auth if not enabled or no key configured
     if not config.has_auth:
-        return True
-    
-    # Check X-API-Key header
-    if x_api_key and x_api_key == config.auth.api_key:
-        return True
-    
-    # Check Authorization: Bearer header
-    if authorization:
+        token = set_tenant_id("default")
+        try:
+            yield "default"
+        finally:
+            reset_tenant_id(token)
+        return
+
+    mode = (config.auth.mode or "api_key").lower()
+
+    def _extract_bearer() -> Optional[str]:
+        if not authorization:
+            return None
         parts = authorization.split()
         if len(parts) == 2 and parts[0].lower() == "bearer":
-            if parts[1] == config.auth.api_key:
-                return True
+            return parts[1]
+        return None
+
+    bearer = _extract_bearer()
+
+    if mode in ("firebase", "api_key_or_firebase") and bearer:
+        if not HAS_FIREBASE_ADMIN:
+            raise HTTPException(status_code=500, detail="firebase-admin not installed (AUTH_MODE=firebase)")
+        try:
+            if not firebase_admin._apps:
+                firebase_admin.initialize_app()
+            decoded = firebase_auth.verify_id_token(bearer)
+            tenant_id = decoded.get("uid") or decoded.get("user_id")
+            if not tenant_id:
+                raise HTTPException(status_code=401, detail="Invalid token (missing uid)")
+            token = set_tenant_id(tenant_id)
+            try:
+                yield tenant_id
+            finally:
+                reset_tenant_id(token)
+            return
+        except HTTPException:
+            raise
+        except Exception as e:
+            # In api_key_or_firebase mode, allow falling back to API key if bearer isn't a Firebase token.
+            if mode == "firebase":
+                raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
     
-    raise HTTPException(status_code=401, detail="Invalid or missing API key")
+    # API key modes (admin key or per-tenant keys)
+    if mode in ("api_key", "api_key_or_firebase"):
+        api_key_value = x_api_key or bearer
+
+        # Check admin/global API key
+        if api_key_value and api_key_value == config.auth.api_key:
+            token = set_tenant_id("default")
+            try:
+                yield "default"
+            finally:
+                reset_tenant_id(token)
+            return
+
+        # Check per-tenant API key store (hosted)
+        if api_key_value and config.multi_tenant.enabled and config.has_firestore:
+            try:
+                tenant_id = ApiKeyStore().lookup_tenant(api_key_value)
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"API key lookup failed: {e}")
+            if tenant_id:
+                token = set_tenant_id(tenant_id)
+                try:
+                    yield tenant_id
+                finally:
+                    reset_tenant_id(token)
+                return
+
+    # Back-compat: explicit X-API-Key header matches configured key
+    if x_api_key and x_api_key == config.auth.api_key:
+        token = set_tenant_id("default")
+        try:
+            yield "default"
+        finally:
+            reset_tenant_id(token)
+        return
+    if bearer and bearer == config.auth.api_key:
+        token = set_tenant_id("default")
+        try:
+            yield "default"
+        finally:
+            reset_tenant_id(token)
+        return
+    
+    raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+async def require_firebase_user(
+    authorization: Optional[str] = Header(None),
+):
+    """Require a Firebase user (for account management endpoints). Returns tenant_id."""
+    config = get_config()
+    if (config.auth.mode or "").lower() not in ("firebase", "api_key_or_firebase"):
+        raise HTTPException(status_code=400, detail="Firebase auth is not enabled")
+    if not HAS_FIREBASE_ADMIN:
+        raise HTTPException(status_code=500, detail="firebase-admin not installed")
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing Authorization bearer token")
+    parts = authorization.split()
+    if len(parts) != 2 or parts[0].lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Invalid Authorization header")
+    try:
+        if not firebase_admin._apps:
+            firebase_admin.initialize_app()
+        decoded = firebase_auth.verify_id_token(parts[1])
+        tenant_id = decoded.get("uid") or decoded.get("user_id")
+        if not tenant_id:
+            raise HTTPException(status_code=401, detail="Invalid token (missing uid)")
+        token = set_tenant_id(tenant_id)
+        try:
+            yield tenant_id
+        finally:
+            reset_tenant_id(token)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+
+async def require_paid_tenant(
+    tenant_id: str = Depends(verify_api_key),
+):
+    """Require an active subscription when BILLING_REQUIRED=true."""
+    if not is_tenant_active(tenant_id):
+        raise HTTPException(status_code=402, detail="Subscription required")
+    return tenant_id
 
 
 # ==================== Pydantic Models ====================
@@ -262,6 +388,10 @@ class CrawlRequest(BaseModel):
 class NormalizeRequest(BaseModel):
     url_prefix: str
     title: str
+
+
+class CreateApiKeyRequest(BaseModel):
+    label: str = "Default"
 
 
 class SearchResultItem(BaseModel):
@@ -338,7 +468,7 @@ async def list_sources():
 async def start_crawl(
     request: CrawlRequest,
     background_tasks: BackgroundTasks,
-    _: bool = Depends(verify_api_key),
+    _tenant_id: str = Depends(require_paid_tenant),
 ):
     """Start a crawl job (requires API key)."""
     try:
@@ -346,11 +476,11 @@ async def start_crawl(
         job = db.create_crawl_job(request.url)
         
         # Run crawl in background
-        def do_crawl():
-            crawl_manager = get_crawl_manager()
+        def do_crawl(tenant_id: str):
+            crawl_manager = get_crawl_manager(tenant_id)
             crawl_manager.crawl_and_index(request.url)
         
-        background_tasks.add_task(do_crawl)
+        background_tasks.add_task(do_crawl, _tenant_id)
         
         return {
             "job_id": job.id,
@@ -463,7 +593,7 @@ async def search_docs(request: SearchRequest):
 @api.post("/api/normalize")
 async def normalize_docs(
     request: NormalizeRequest,
-    _: bool = Depends(verify_api_key),
+    _tenant_id: str = Depends(require_paid_tenant),
 ):
     """Build a normalized document (requires API key)."""
     try:
@@ -502,7 +632,7 @@ async def list_normalized():
 @api.delete("/api/sources/{source_url:path}")
 async def delete_source(
     source_url: str,
-    _: bool = Depends(verify_api_key),
+    _tenant_id: str = Depends(require_paid_tenant),
 ):
     """Delete all indexed docs for a source (requires API key)."""
     try:
@@ -513,13 +643,74 @@ async def delete_source(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ==================== API Keys (Hosted) ====================
+
+@api.get("/api/api-keys")
+async def list_api_keys(
+    tenant_id: str = Depends(require_firebase_user),
+):
+    try:
+        store = ApiKeyStore()
+        keys = store.list_for_tenant(tenant_id)
+        return {
+            "api_keys": [
+                {
+                    "digest": k.digest,
+                    "label": k.label,
+                    "created_at": k.created_at,
+                    "last_used_at": k.last_used_at,
+                    "revoked_at": k.revoked_at,
+                }
+                for k in keys
+            ]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api.post("/api/api-keys")
+async def create_api_key(
+    request: CreateApiKeyRequest,
+    tenant_id: str = Depends(require_firebase_user),
+):
+    try:
+        if not is_tenant_active(tenant_id):
+            raise HTTPException(status_code=402, detail="Subscription required")
+        store = ApiKeyStore()
+        created = store.create(tenant_id=tenant_id, label=request.label)
+        # Only return plaintext once.
+        return {"api_key": created["api_key"], "digest": created["digest"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@api.delete("/api/api-keys/{digest}")
+async def revoke_api_key(
+    digest: str,
+    tenant_id: str = Depends(require_firebase_user),
+):
+    try:
+        if not is_tenant_active(tenant_id):
+            raise HTTPException(status_code=402, detail="Subscription required")
+        ok = ApiKeyStore().revoke(tenant_id=tenant_id, digest=digest)
+        if not ok:
+            raise HTTPException(status_code=404, detail="API key not found")
+        return {"revoked": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ==================== MCP HTTP Endpoint ====================
 
 @api.post("/mcp/tools/{tool_name}")
 async def mcp_tool_call(
     tool_name: str,
     request: dict,
-    _: bool = Depends(verify_api_key),
+    _tenant_id: str = Depends(verify_api_key),
 ):
     """
     Execute MCP tool via HTTP.
