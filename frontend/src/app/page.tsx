@@ -1,8 +1,3 @@
-export default function Deprecated() {
-  return (
-    <div className="p-10 text-red-500 font-bold border border-red-500 rounded bg-red-950/20">
-      SYSTEM MIGRATION: This file should be deleted.
-      The content has been moved to frontend/src/app/(marketing)/page.tsx and frontend/src/app/(app)/page.tsx.
-    </div>
-  );
-}
+// SYSTEM MIGRATION: This file is deprecated.
+// Content moved to (marketing)/page.tsx or (app)/dashboard/page.tsx.
+// We are not exporting a component here to avoid route conflicts.
