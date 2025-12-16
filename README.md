@@ -4,6 +4,8 @@
 
 ContextPilot crawls web documentation, chunks and embeds it in Pinecone, and provides semantic search via **MCP** (Model Context Protocol) tools and a **REST API**. Deploy locally or to the cloud.
 
+If you’re new, start with `OVERVIEW.md`.
+
 ## Architecture
 
 ```

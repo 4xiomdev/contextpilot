@@ -20,6 +20,10 @@ FIRECRAWL_API_KEY=your-firecrawl-api-key
 # Cloud Deployment (optional)
 FIREBASE_PROJECT_ID=your-project-id
 CONTEXTPILOT_API_KEY=your-api-key
+
+# Hosted mode (optional)
+AUTH_MODE=api_key_or_firebase
+MULTI_TENANT_ENABLED=true
 ```
 
 ### 2. Install Dependencies
@@ -111,8 +115,11 @@ gcloud run deploy contextpilot-api \
   --source . \
   --region us-central1 \
   --allow-unauthenticated \
-  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,PINECONE_API_KEY=$PINECONE_API_KEY"
+  --set-env-vars="FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID,AUTH_MODE=api_key_or_firebase,MULTI_TENANT_ENABLED=true" \
+  --set-env-vars="GOOGLE_API_KEY=$GOOGLE_API_KEY,PINECONE_API_KEY=$PINECONE_API_KEY,CONTEXTPILOT_API_KEY=$CONTEXTPILOT_API_KEY"
 ```
+
+Note: `--allow-unauthenticated` is OK if you enforce `AUTH_MODE=api_key_or_firebase` (the API stays protected by Firebase tokens and/or API keys). For stricter security, remove `--allow-unauthenticated` and use Cloud Run IAM instead.
 
 ### Deploy Frontend
 
