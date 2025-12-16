@@ -159,3 +159,4 @@ if __name__ == "__main__":
     logger.info(f"API Key: {'configured' if API_KEY else 'not configured'}")
     mcp.run()
 
+

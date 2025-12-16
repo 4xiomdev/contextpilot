@@ -527,3 +527,4 @@ def get_firestore_db() -> Database:
         _firestore_db = Database()
     return _firestore_db
 
+

@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { Space_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
-import { Navigation } from "@/components/navigation";
 
 const spaceGrotesk = Space_Grotesk({
   variable: "--font-sans",
@@ -30,10 +29,7 @@ export default function RootLayout({
         className={`${spaceGrotesk.variable} ${jetbrainsMono.variable} antialiased bg-zinc-950 text-zinc-100 min-h-screen`}
       >
         <Providers>
-          <div className="flex min-h-screen">
-            <Navigation />
-            <main className="flex-1 ml-64 p-8">{children}</main>
-          </div>
+          {children}
         </Providers>
       </body>
     </html>

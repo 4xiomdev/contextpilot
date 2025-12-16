@@ -70,3 +70,4 @@ echo ""
 echo "📝 Update your Cursor MCP config (~/.cursor/mcp.json):"
 echo "   CONTEXTPILOT_API_URL: $CLOUD_RUN_URL"
 
+
