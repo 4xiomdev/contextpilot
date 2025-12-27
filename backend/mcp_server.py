@@ -93,18 +93,14 @@ def search_documentation(
         search_mode = SearchMode.DEEP if mode.lower() == "deep" else SearchMode.QUICK
 
         # Run async search in sync context
-        loop = asyncio.new_event_loop()
-        try:
-            result = loop.run_until_complete(
-                search_agent.search(
-                    query=query,
-                    mode=search_mode,
-                    limit=limit,
-                    url_filter=url_filter,
-                )
+        result = asyncio.run(
+            search_agent.search(
+                query=query,
+                mode=search_mode,
+                limit=limit,
+                url_filter=url_filter,
             )
-        finally:
-            loop.close()
+        )
 
         return json.dumps(result.to_dict(), ensure_ascii=False)
 
@@ -233,17 +229,13 @@ def discover_documentation(topic: str, max_results: int = 10) -> str:
             })
 
         # Run async discovery in sync context
-        loop = asyncio.new_event_loop()
-        try:
-            result = loop.run_until_complete(
-                discovery_agent.discover_for_topic(
-                    topic=topic,
-                    max_results=max_results,
-                    validate=True,
-                )
+        result = asyncio.run(
+            discovery_agent.discover_for_topic(
+                topic=topic,
+                max_results=max_results,
+                validate=True,
             )
-        finally:
-            loop.close()
+        )
 
         return json.dumps(result.to_dict(), ensure_ascii=False)
 
