@@ -42,6 +42,7 @@ class FirecrawlConfig:
     api_key: str
     timeout: int = 60
     max_pages: int = 100
+    min_interval_seconds: float = 8.0
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,12 @@ class FirestoreConfig:
     """Firestore database configuration."""
     project_id: str
     database_id: str = "(default)"
+
+
+@dataclass(frozen=True)
+class QdrantConfig:
+    """Qdrant local vector store configuration."""
+    path: Path
 
 
 @dataclass(frozen=True)
@@ -106,6 +113,7 @@ class Config:
         
         self.firecrawl = FirecrawlConfig(
             api_key=os.getenv("FIRECRAWL_API_KEY", ""),
+            min_interval_seconds=float(os.getenv("FIRECRAWL_MIN_INTERVAL_SECONDS", "8")),
         )
         
         self.firestore = FirestoreConfig(
@@ -116,6 +124,11 @@ class Config:
         # SQLite fallback for local development
         self.database = DatabaseConfig(
             path=self.data_dir / "contextpilot.db",
+        )
+
+        # Local vector store fallback (Qdrant embedded)
+        self.qdrant = QdrantConfig(
+            path=Path(os.getenv("QDRANT_PATH", str(self.data_dir / "qdrant"))),
         )
         
         self.server = ServerConfig(
@@ -134,12 +147,36 @@ class Config:
             enabled=os.getenv("MULTI_TENANT_ENABLED", "").lower() == "true",
         )
 
+        self.vector_store_provider = os.getenv("VECTOR_STORE_PROVIDER", "")
+        self.default_exclude_paths = self._load_default_exclude_paths()
+
         # Fail fast in hosted mode if auth is required but not configured.
         if self.is_cloud_run and self.auth.enabled and self.auth.mode == "api_key" and not self.auth.api_key:
             raise EnvironmentError(
                 "AUTH is enabled in Cloud Run but CONTEXTPILOT_API_KEY is not set. "
                 "Set CONTEXTPILOT_API_KEY (or switch AUTH_MODE=firebase/none)."
             )
+
+    def _load_default_exclude_paths(self) -> list[str]:
+        """Load default exclusion paths for sitemap crawling."""
+        raw = os.getenv("DEFAULT_EXCLUDE_PATHS", "").strip()
+        if raw:
+            return [p.strip() for p in raw.split(",") if p.strip()]
+        return [
+            "/blog",
+            "/changelog",
+            "/community",
+            "/competition",
+            "/careers",
+            "/pricing",
+            "/login",
+            "/signup",
+            "/auth",
+            "/terms",
+            "/privacy",
+            "/support",
+            "/about",
+        ]
     
     def _validate_required_env_vars(self) -> None:
         """Validate that required environment variables are set."""
@@ -177,6 +214,11 @@ class Config:
     def has_firestore(self) -> bool:
         """Check if Firestore is configured."""
         return bool(self.firestore.project_id)
+
+    @property
+    def has_gemini(self) -> bool:
+        """Check if Gemini (Google AI) is configured."""
+        return bool(self.google.api_key)
     
     @property
     def has_auth(self) -> bool:

@@ -84,8 +84,16 @@ GOOGLE_API_KEY=your-google-api-key
 PINECONE_API_KEY=your-pinecone-api-key
 PINECONE_INDEX_NAME=contextpilot
 
+# Local Vector Store (optional fallback)
+# VECTOR_STORE_PROVIDER=qdrant  # default: auto (pinecone if configured)
+# QDRANT_PATH=./data/qdrant
+
 # Crawling
 FIRECRAWL_API_KEY=your-firecrawl-api-key
+FIRECRAWL_MIN_INTERVAL_SECONDS=8
+
+# Crawl filtering (optional)
+# DEFAULT_EXCLUDE_PATHS=/blog,/changelog,/community,/competition,/pricing,/login,/signup
 
 # Firebase (for cloud deployment)
 FIREBASE_PROJECT_ID=your-project-id
